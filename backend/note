@@ -1,0 +1,6 @@
+Jika kamu berpindah ke terminal CMD, gunakan perintah ini:
+
+venv\Scripts\activate
+pindah ke folder backend
+uvicorn server:app --reload
+

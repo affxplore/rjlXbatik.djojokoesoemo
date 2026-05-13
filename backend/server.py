@@ -1,69 +1,39 @@
+import os
+# pyrefly: ignore [missing-import]
 from fastapi import FastAPI, APIRouter
-from motor.motor_asyncio import AsyncIOMotorClient
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import Column, Integer, String, Text, DateTime, select, func
+from pydantic import BaseModel
+from datetime import datetime
 from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+from pydantic import EmailStr
+# from flask import Flask, render_template, request, jsonify
+# from flask_mysqldb import MySQL
 
-import os
-import logging
-import uuid
-from pathlib import Path
-from datetime import datetime, timezone
+load_dotenv()
 
-from pydantic import BaseModel, Field, ConfigDict
+# --- DATABASE SETUP ---
+DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_async_engine(DATABASE_URL, echo=True)
+AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+Base = declarative_base()
 
-# === Load environment variables ===
-ROOT_DIR = Path(__file__).parent
-load_dotenv(dotenv_path=ROOT_DIR / '.env')
+# --- MODEL DATABASE (Tabel MySQL) ---
+class Registration(Base):
+    __tablename__ = "registrations"
+    id = Column(Integer, primary_key=True, index=True)
+    fullName = Column(String(255))
+    email = Column(String(255))
+    phone = Column(String(50))
+    classType = Column(String(100))
+    preferredDate = Column(String(100))
+    message = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
-
-# === MongoDB connection ===
-mongo_url = os.getenv("MONGO_URL")
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.getenv("DB_NAME")]
-
-
-# === FastAPI app and router ===
-app = FastAPI()
-api_router = APIRouter(prefix="/api")
-
-
-# === Models ===
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class StatusCheckCreate(BaseModel):
-    client_name: str
-
-
-class ContactMessage(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    email: str
-    message: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-class ContactMessageCreate(BaseModel):
-    name: str
-    email: str
-    message: str
-
-
-class Registration(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    fullName: str
-    email: str
-    phone: str
-    classType: str
-    preferredDate: str
-    message: str = ""
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-
+# --- SCHEMA VALIDASI (Pydantic) ---
 class RegistrationCreate(BaseModel):
     fullName: str
     email: str
@@ -72,78 +42,143 @@ class RegistrationCreate(BaseModel):
     preferredDate: str
     message: str = ""
 
+app = FastAPI()
+api_router = APIRouter(prefix="/api")
 
-# === Routes ===
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
+# --- AUTO CREATE TABLE ---
+@app.on_event("startup")
+async def startup():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+# SEEDER: Tambah data contoh jika tabel masih kosong
+    async with AsyncSessionLocal() as session:
+        # Cek apakah sudah ada data
+        result = await session.execute(select(Registration))
+        exists = result.scalars().first()
+        
+        if not exists:
+            sample_data = Registration(
+                fullName="Budi Penenun",
+                email="budi@example.com",
+                phone="08123456789",
+                classType="Batik Class",
+                preferredDate="2024-05-20",
+                message="Halo, saya ingin belajar batik tulis."
+            )
+            session.add(sample_data)
+            await session.commit()
+            print("✅ Seeder: Data awal berhasil ditambahkan!")
+
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+from pydantic import EmailStr
+
+# --- Konfigurasi Email ---
+conf = ConnectionConfig(
+    MAIL_USERNAME = "afifa.studyzone@gmail.com",
+    MAIL_PASSWORD = "mcgflqsgbgivoxia", # "Gmail App Password"
+    MAIL_FROM = "afifa.studyzone@gmail.com",
+    MAIL_PORT = 587,
+    MAIL_SERVER = "smtp.gmail.com",
+    MAIL_STARTTLS = True,
+    MAIL_SSL_TLS = False,
+    USE_CREDENTIALS = True,
+    VALIDATE_CERTS = True
+)
+
+# --- Fungsi Kirim Email ---
+async def send_email_to_admin(data):
+    html = f"""
+    <h3>Pendaftaran Baru: RJL Group</h3>
+    <p><b>Nama:</b> {data.fullName}</p>
+    <p><b>Email:</b> {data.email}</p>
+    <p><b>Telepon:</b> {data.phone}</p>
+    <p><b>Kelas:</b> {data.classType}</p>
+    <p><b>Tanggal:</b> {data.preferredDate}</p>
+    <p><b>Pesan:</b> {data.message}</p>
+    """
+    
+    message = MessageSchema(
+        subject="New Registration Alert - RJL Group",
+        recipients=["afifa.studyzone@gmail.com"], # Email tujuan (Admin)
+        body=html,
+        subtype=MessageType.html
+    )
+
+    fm = FastMail(conf)
+    await fm.send_message(message)
+
+# --- Update Route POST ---
+@api_router.post("/registrations")
+async def create_registration(data: RegistrationCreate):
+    async with AsyncSessionLocal() as session:
+        # 1. Simpan ke Database
+        new_entry = Registration(
+            fullName=data.fullName,
+            email=data.email,
+            phone=data.phone,
+            classType=data.classType,
+            preferredDate=data.preferredDate,
+            message=data.message
+        )
+        session.add(new_entry)
+        await session.commit()
+
+        # 2. Kirim Email (Panggil fungsi kirim email)
+        try:
+            await send_email_to_admin(data)
+        except Exception as e:
+            print(f"Gagal kirim email: {e}")
+
+        return {"status": "success", "message": "Data tersimpan & email terkirim!"}
 
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    doc = status_obj.model_dump()
-    doc["timestamp"] = doc["timestamp"].isoformat()
-    await db.status_checks.insert_one(doc)
-    return status_obj
+# --- Jumlah total kapasitas workshop ---
+TOTAL_SPOTS = 16
+
+# --- GET: Ambil daftar peserta terdaftar ---
+@api_router.get("/registrations")
+async def get_registrations(limit: int = 5, skip: int = 0):
+    async with AsyncSessionLocal() as session:
+        # Hitung total peserta
+        count_result = await session.execute(select(func.count()).select_from(Registration))
+        total = count_result.scalar()
+
+        # Ambil data dengan offset dan limit
+        result = await session.execute(
+            select(Registration).order_by(Registration.created_at.desc()).offset(skip).limit(limit)
+        )
+        rows = result.scalars().all()
+
+        participants = []
+        for i, r in enumerate(rows):
+            participants.append({
+                "no": skip + i + 1,
+                "fullName": r.fullName,
+                "email": r.email,
+                "classType": r.classType,
+                "preferredDate": r.preferredDate,
+                "registeredAt": r.created_at.strftime("%d %b %Y, %H:%M") if r.created_at else "-"
+            })
+
+        return {
+            "status": "success",
+            "totalSpots": TOTAL_SPOTS,
+            "filledSpots": total,
+            "totalParticipants": total,
+            "participants": participants
+        }
 
 
-@api_router.get("/status", response_model=list[StatusCheck])
-async def get_status_checks():
-    status_checks = await db.status_checks.find().to_list(1000)
-    return [StatusCheck(**status_check) for status_check in status_checks]
-
-
-@api_router.post("/contact", response_model=ContactMessage)
-async def create_contact_message(input: ContactMessageCreate):
-    contact_dict = input.model_dump()
-    contact_obj = ContactMessage(**contact_dict)
-    await db.contact_messages.insert_one(contact_obj.model_dump())
-    return contact_obj
-
-
-@api_router.get("/contact", response_model=list[ContactMessage])
-async def get_contact_messages():
-    messages = await db.contact_messages.find().to_list(1000)
-    return [ContactMessage(**message) for message in messages]
-
-
-@api_router.post("/registrations", response_model=Registration)
-async def create_registration(input: RegistrationCreate):
-    registration_dict = input.model_dump()
-    registration_obj = Registration(**registration_dict)
-    await db.registrations.insert_one(registration_obj.model_dump())
-    return registration_obj
-
-@api_router.get("/registrations", response_model=list[Registration])
-async def get_registrations():
-    registrations = await db.registrations.find().to_list(1000)
-    return [Registration(**registration) for registration in registrations]
-
-
-# === Include router and middleware ===
-app.include_router(api_router)
-
+# --- CORS SETUP (Agar Frontend bisa akses Backend) ---
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(api_router)
 
-# === Logging ===
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
-
-
-# === Shutdown ===
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
 

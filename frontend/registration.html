@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Registration - RJL Group</title>
-    <link rel="stylesheet" href="./frontend/style.css">
+    <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -53,7 +53,7 @@
             <div class="registration-wrapper">
                 <div class="glass-card form-card slide-up">
                     <h2 class="section-title">Register for Classes</h2>
-                    <form id="registrationForm" class="registration-form">
+                    <form id="regForm" class="registration-form">
                         <div class="form-group">
                             <label for="fullName" class="form-label">Full Name</label>
                             <input type="text" id="fullName" name="fullName" class="form-input" required>
@@ -118,6 +118,107 @@
         </div>
     </section>
 
+    <!-- =============================================
+         REGISTERED PARTICIPANTS SECTION
+         ============================================= -->
+    <section class="section-padding participants-section slide-up" id="registeredParticipants">
+        <div class="container">
+            <div class="participants-card">
+
+                <!-- Header -->
+                <div class="participants-header">
+                    <div class="participants-title-group">
+                        <h2 class="participants-title">Registered Participants</h2>
+                        <p class="participants-subtitle">See who has already registered for this workshop.</p>
+                    </div>
+                    <div class="spots-badge" id="spotsBadge">
+                        <span class="spots-filled" id="spotsFilled">—</span>
+                        <span class="spots-separator">/</span>
+                        <span class="spots-total" id="spotsTotal">16</span>
+                        <span class="spots-label">spots filled</span>
+                    </div>
+                </div>
+
+                <!-- Table Desktop / Cards Mobile -->
+                <div class="participants-table-wrap" id="participantsTableWrap">
+
+                    <!-- Skeleton Loading -->
+                    <div class="participants-skeleton" id="participantsSkeleton">
+                        <div class="skeleton-row" aria-hidden="true">
+                            <div class="skeleton-cell skel-no"></div>
+                            <div class="skeleton-cell skel-avatar"></div>
+                            <div class="skeleton-cell skel-name"></div>
+                            <div class="skeleton-cell skel-badge"></div>
+                            <div class="skeleton-cell skel-date"></div>
+                            <div class="skeleton-cell skel-reg"></div>
+                        </div>
+                        <div class="skeleton-row" aria-hidden="true">
+                            <div class="skeleton-cell skel-no"></div>
+                            <div class="skeleton-cell skel-avatar"></div>
+                            <div class="skeleton-cell skel-name"></div>
+                            <div class="skeleton-cell skel-badge"></div>
+                            <div class="skeleton-cell skel-date"></div>
+                            <div class="skeleton-cell skel-reg"></div>
+                        </div>
+                        <div class="skeleton-row" aria-hidden="true">
+                            <div class="skeleton-cell skel-no"></div>
+                            <div class="skeleton-cell skel-avatar"></div>
+                            <div class="skeleton-cell skel-name"></div>
+                            <div class="skeleton-cell skel-badge"></div>
+                            <div class="skeleton-cell skel-date"></div>
+                            <div class="skeleton-cell skel-reg"></div>
+                        </div>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div class="participants-empty" id="participantsEmpty" style="display:none;">
+                        <div class="empty-icon">🪡</div>
+                        <p class="empty-text">No participants yet — be the first to register!</p>
+                    </div>
+
+                    <!-- Table -->
+                    <table class="participants-table" id="participantsTable" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <th>Participant</th>
+                                <th>Class Type</th>
+                                <th>Date</th>
+                                <th>Registered On</th>
+                            </tr>
+                        </thead>
+                        <tbody id="participantsTbody">
+                            <!-- Rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination Controls -->
+                <div class="participants-pagination" id="participantsPagination" style="display:none;">
+                    <button class="pt-page-btn" id="ptPrevBtn" aria-label="Previous page" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                        Prev
+                    </button>
+                    <span class="pt-page-info" id="ptPageInfo">Page 1 of 1</span>
+                    <button class="pt-page-btn" id="ptNextBtn" aria-label="Next page">
+                        Next
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                </div>
+
+                <!-- Footer note -->
+                <div class="participants-footer">
+                    <span class="participants-note">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        More participants will appear here as they register.
+                    </span>
+                    <span class="participants-realtime">Data is updated in real-time</span>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
     <!-- Footer -->
     <footer class="footer-glass">
         <div class="footer-content">
@@ -140,10 +241,10 @@
                     </svg>
                 </a>
             </div>
-            <p class="footer-text">&copy; 2024 RJL Group. All rights reserved.</p>
+            <p class="footer-text">&copy; 2025 RJL Group. All rights reserved.</p>
         </div>
     </footer>
 
-    <script src="./frontend/script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

@@ -167,42 +167,63 @@ if (contactForm) {
 }
 
 /* -------------------------------
-   REGISTRATION FORM
+   REGISTRATION FORM (FIXED)
 ------------------------------- */
-const regForm = document.getElementById("registrationForm");
+// 1. Pastikan ID ini sesuai dengan yang ada di tag <form id="..."> di HTML kamu
+const regForm = document.getElementById("regForm");
 const regMsg = document.getElementById("registrationFormMessage");
 
 if (regForm) {
-  regForm.addEventListener("submit", async e => {
-    e.preventDefault();
-    const formData = Object.fromEntries(new FormData(regForm));
-    const btn = regForm.querySelector('button[type="submit"]');
-    const original = btn.textContent;
+    regForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
 
-    btn.textContent = "Submitting...";
-    btn.disabled = true;
+        // 1. Ambil data dari input
+        const payload = {
+            fullName: document.getElementById('fullName').value,
+            email: document.getElementById('email').value,
+            phone: document.getElementById('phone').value,
+            classType: document.getElementById('classType').value,
+            preferredDate: document.getElementById('preferredDate').value,
+            message: document.getElementById('message').value
+        };
 
-    try {
-      // 💡 Simulasi delay 1 detik
-      await new Promise(resolve => setTimeout(resolve, 1000));
+        // 2. Efek Visual Tombol
+        const btn = regForm.querySelector('button[type="submit"]');
+        btn.textContent = "Processing...";
+        btn.disabled = true;
 
-      // ✅ Anggap registrasi sukses
-      console.log("Registration data:", formData);
-      regMsg.textContent = "✅ Registration successful!";
-      regMsg.className = "form-message success";
-      regForm.reset();
-    } catch {
-      regMsg.textContent = "❌ Error submitting registration.";
-      regMsg.className = "form-message error";
-    } finally {
-      btn.textContent = original;
-      btn.disabled = false;
-      regMsg.style.display = "block";
-      setTimeout(() => (regMsg.style.display = "none"), 4000);
-    }
-  });
+        try {
+            // 3. Kirim ke Backend
+            const response = await fetch('http://127.0.0.1:8000/api/registrations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                // Berhasil
+                alert("✅ Registration Successful!");
+                regForm.reset();
+                // Refresh participants list
+                regForm.dispatchEvent(new Event("participants-refresh"));
+                if (regMsg) {
+                    regMsg.textContent = "Data successfully saved to database!";
+                    regMsg.style.color = "green";
+                    regMsg.style.display = "block";
+                }
+            } else {
+                const errorData = await response.json();
+                alert("❌ Server Error: " + JSON.stringify(errorData.detail));
+            }
+        } catch (error) {
+            console.error("Fetch error:", error);
+            alert("❌ Failed to connect to server. Is Uvicorn running?");
+        } finally {
+            btn.textContent = "Submit Registration";
+            btn.disabled = false;
+        }
+    });
 }
-
 
   /* -------------------------------
      GALLERY MODAL & BUTTON EFFECTS
@@ -300,4 +321,176 @@ if (regForm) {
     document.body.style.transition = "opacity 0.6s ease";
     document.body.style.opacity = "1";
   });
+
+  /* =======================================
+     REGISTERED PARTICIPANTS — FETCH & RENDER
+     ======================================= */
+
+  const PT_PAGE_SIZE = 5;
+  let ptCurrentPage = 1;
+
+  // Map classType value → badge CSS class + display label
+  function getClassBadge(classType) {
+    const map = {
+      beginner:     { cls: "badge-beginner",    label: "Basic Class" },
+      intermediate: { cls: "badge-intermediate", label: "Intermediate Class" },
+      advanced:     { cls: "badge-advanced",     label: "Advanced Class" },
+      private:      { cls: "badge-private",      label: "Private Session" },
+    };
+    const key = (classType || "").toLowerCase().trim();
+    for (const [k, v] of Object.entries(map)) {
+      if (key.includes(k)) return v;
+    }
+    return { cls: "badge-beginner", label: classType || "—" };
+  }
+
+  // Format preferred date string to "DD Mon YYYY"
+  function formatDate(dateStr) {
+    if (!dateStr) return "—";
+    const d = new Date(dateStr);
+    if (isNaN(d)) return dateStr;
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  // Get initials for avatar
+  function getInitials(name) {
+    if (!name) return "?";
+    const parts = name.trim().split(" ");
+    return parts.length >= 2
+      ? (parts[0][0] + parts[1][0]).toUpperCase()
+      : parts[0].slice(0, 2).toUpperCase();
+  }
+
+  async function loadParticipants(page) {
+    page = page || ptCurrentPage;
+    const skeleton   = document.getElementById("participantsSkeleton");
+    const empty      = document.getElementById("participantsEmpty");
+    const table      = document.getElementById("participantsTable");
+    const tbody      = document.getElementById("participantsTbody");
+    const filled     = document.getElementById("spotsFilled");
+    const total      = document.getElementById("spotsTotal");
+    const pagination = document.getElementById("participantsPagination");
+    const prevBtn    = document.getElementById("ptPrevBtn");
+    const nextBtn    = document.getElementById("ptNextBtn");
+    const pageInfo   = document.getElementById("ptPageInfo");
+
+    if (!skeleton) return; // not on registration page
+
+    // Show skeleton, hide others
+    skeleton.style.display = "flex";
+    empty.style.display    = "none";
+    table.style.display    = "none";
+    if (pagination) pagination.style.display = "none";
+
+    const skip = (page - 1) * PT_PAGE_SIZE;
+
+    try {
+      const res  = await fetch(`http://127.0.0.1:8000/api/registrations?limit=${PT_PAGE_SIZE}&skip=${skip}`);
+      if (!res.ok) throw new Error("Server error");
+      const data = await res.json();
+
+      // Update spots badge
+      filled.textContent = data.filledSpots ?? "—";
+      total.textContent  = data.totalSpots  ?? 16;
+
+      skeleton.style.display = "none";
+
+      const totalParticipants = data.totalParticipants ?? data.filledSpots ?? 0;
+      const totalPages = Math.max(1, Math.ceil(totalParticipants / PT_PAGE_SIZE));
+
+      // Clamp page within valid range
+      if (page > totalPages) page = totalPages;
+      ptCurrentPage = page;
+
+      if (!data.participants || data.participants.length === 0) {
+        empty.style.display = "block";
+        return;
+      }
+
+      // Build rows
+      tbody.innerHTML = "";
+      data.participants.forEach((p, idx) => {
+        const badge = getClassBadge(p.classType);
+        const tr = document.createElement("tr");
+        tr.className = "pt-row-animate";
+        tr.style.animationDelay = `${idx * 0.07}s`;
+        tr.innerHTML = `
+          <td class="pt-no" data-label="">${String(p.no).padStart(2, "0")}</td>
+          <td data-label="Participant">
+            <div class="pt-participant">
+              <div class="pt-avatar">${getInitials(p.fullName)}</div>
+              <div>
+                <div class="pt-name">${p.fullName || "—"}</div>
+                <div class="pt-email">${p.email || ""}</div>
+              </div>
+            </div>
+          </td>
+          <td data-label="Class Type">
+            <span class="class-badge ${badge.cls}">${badge.label}</span>
+          </td>
+          <td data-label="Date">
+            <div class="pt-date">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              ${formatDate(p.preferredDate)}
+            </div>
+          </td>
+          <td class="pt-reg" data-label="Registered On">${p.registeredAt || "—"}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      table.style.display = "table";
+
+      // Update pagination controls
+      if (pagination) {
+        if (totalPages > 1) {
+          pagination.style.display = "flex";
+          pageInfo.textContent     = `Page ${ptCurrentPage} of ${totalPages}`;
+          prevBtn.disabled         = ptCurrentPage <= 1;
+          nextBtn.disabled         = ptCurrentPage >= totalPages;
+        } else {
+          pagination.style.display = "none";
+        }
+      }
+
+    } catch (err) {
+      console.warn("Participants fetch failed:", err);
+      skeleton.style.display = "none";
+      empty.style.display    = "block";
+    }
+  }
+
+  // Wire Prev / Next buttons
+  const ptPrevBtn = document.getElementById("ptPrevBtn");
+  const ptNextBtn = document.getElementById("ptNextBtn");
+
+  if (ptPrevBtn) {
+    ptPrevBtn.addEventListener("click", () => {
+      if (ptCurrentPage > 1) loadParticipants(ptCurrentPage - 1);
+    });
+  }
+
+  if (ptNextBtn) {
+    ptNextBtn.addEventListener("click", () => {
+      loadParticipants(ptCurrentPage + 1);
+    });
+  }
+
+  // Initial load
+  loadParticipants(1);
+
+  // Refresh list after successful registration submission
+  const regForm2 = document.getElementById("regForm");
+  if (regForm2) {
+    regForm2.addEventListener("participants-refresh", () => {
+      ptCurrentPage = 1;
+      loadParticipants(1);
+    });
+  }
+
+  // Poll every 30 seconds for real-time feel
+  setInterval(() => loadParticipants(ptCurrentPage), 30000);
+
 });
